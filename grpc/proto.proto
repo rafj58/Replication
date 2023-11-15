@@ -7,9 +7,10 @@ package proto;
 message Empty {
 }
 
-message Master{
+message Peer{
     string address = 1;
     int32 port = 2;
+    int32 id = 3;
 }
 
 message Amount {
@@ -28,9 +29,12 @@ message Outcome {
 service AuctionService {
     rpc Bid (Amount) returns (Acknowledge);
     rpc Result (Empty) returns (Outcome);
-    rpc AskForMaster (Empty) returns (Master);
+    rpc AskForMaster (Empty) returns (Peer);
 }
 
 service DistributedService {
-    rpc Election (Master) returns (Master);
+    // bully algorithm
+    rpc Election(Peer) returns (Acknowledge);
+    rpc Coordinator(Peer) returns (Acknowledge);
 }
+    

@@ -30,7 +30,7 @@ const (
 type AuctionServiceClient interface {
 	Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Acknowledge, error)
 	Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Outcome, error)
-	AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Master, error)
+	AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Peer, error)
 }
 
 type auctionServiceClient struct {
@@ -59,8 +59,8 @@ func (c *auctionServiceClient) Result(ctx context.Context, in *Empty, opts ...gr
 	return out, nil
 }
 
-func (c *auctionServiceClient) AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Master, error) {
-	out := new(Master)
+func (c *auctionServiceClient) AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Peer, error) {
+	out := new(Peer)
 	err := c.cc.Invoke(ctx, AuctionService_AskForMaster_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (c *auctionServiceClient) AskForMaster(ctx context.Context, in *Empty, opts
 type AuctionServiceServer interface {
 	Bid(context.Context, *Amount) (*Acknowledge, error)
 	Result(context.Context, *Empty) (*Outcome, error)
-	AskForMaster(context.Context, *Empty) (*Master, error)
+	AskForMaster(context.Context, *Empty) (*Peer, error)
 	mustEmbedUnimplementedAuctionServiceServer()
 }
 
@@ -88,7 +88,7 @@ func (UnimplementedAuctionServiceServer) Bid(context.Context, *Amount) (*Acknowl
 func (UnimplementedAuctionServiceServer) Result(context.Context, *Empty) (*Outcome, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Result not implemented")
 }
-func (UnimplementedAuctionServiceServer) AskForMaster(context.Context, *Empty) (*Master, error) {
+func (UnimplementedAuctionServiceServer) AskForMaster(context.Context, *Empty) (*Peer, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AskForMaster not implemented")
 }
 func (UnimplementedAuctionServiceServer) mustEmbedUnimplementedAuctionServiceServer() {}
@@ -183,14 +183,17 @@ var AuctionService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	DistributedService_Election_FullMethodName = "/proto.DistributedService/Election"
+	DistributedService_Election_FullMethodName    = "/proto.DistributedService/Election"
+	DistributedService_Coordinator_FullMethodName = "/proto.DistributedService/Coordinator"
 )
 
 // DistributedServiceClient is the client API for DistributedService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DistributedServiceClient interface {
-	Election(ctx context.Context, in *Master, opts ...grpc.CallOption) (*Master, error)
+	// bully algorithm
+	Election(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Acknowledge, error)
+	Coordinator(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Acknowledge, error)
 }
 
 type distributedServiceClient struct {
@@ -201,9 +204,18 @@ func NewDistributedServiceClient(cc grpc.ClientConnInterface) DistributedService
 	return &distributedServiceClient{cc}
 }
 
-func (c *distributedServiceClient) Election(ctx context.Context, in *Master, opts ...grpc.CallOption) (*Master, error) {
-	out := new(Master)
+func (c *distributedServiceClient) Election(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Acknowledge, error) {
+	out := new(Acknowledge)
 	err := c.cc.Invoke(ctx, DistributedService_Election_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *distributedServiceClient) Coordinator(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Acknowledge, error) {
+	out := new(Acknowledge)
+	err := c.cc.Invoke(ctx, DistributedService_Coordinator_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +226,9 @@ func (c *distributedServiceClient) Election(ctx context.Context, in *Master, opt
 // All implementations must embed UnimplementedDistributedServiceServer
 // for forward compatibility
 type DistributedServiceServer interface {
-	Election(context.Context, *Master) (*Master, error)
+	// bully algorithm
+	Election(context.Context, *Peer) (*Acknowledge, error)
+	Coordinator(context.Context, *Peer) (*Acknowledge, error)
 	mustEmbedUnimplementedDistributedServiceServer()
 }
 
@@ -222,8 +236,11 @@ type DistributedServiceServer interface {
 type UnimplementedDistributedServiceServer struct {
 }
 
-func (UnimplementedDistributedServiceServer) Election(context.Context, *Master) (*Master, error) {
+func (UnimplementedDistributedServiceServer) Election(context.Context, *Peer) (*Acknowledge, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Election not implemented")
+}
+func (UnimplementedDistributedServiceServer) Coordinator(context.Context, *Peer) (*Acknowledge, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Coordinator not implemented")
 }
 func (UnimplementedDistributedServiceServer) mustEmbedUnimplementedDistributedServiceServer() {}
 
@@ -239,7 +256,7 @@ func RegisterDistributedServiceServer(s grpc.ServiceRegistrar, srv DistributedSe
 }
 
 func _DistributedService_Election_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Master)
+	in := new(Peer)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -251,7 +268,25 @@ func _DistributedService_Election_Handler(srv interface{}, ctx context.Context, 
 		FullMethod: DistributedService_Election_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DistributedServiceServer).Election(ctx, req.(*Master))
+		return srv.(DistributedServiceServer).Election(ctx, req.(*Peer))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DistributedService_Coordinator_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Peer)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DistributedServiceServer).Coordinator(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DistributedService_Coordinator_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DistributedServiceServer).Coordinator(ctx, req.(*Peer))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -266,6 +301,10 @@ var DistributedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Election",
 			Handler:    _DistributedService_Election_Handler,
+		},
+		{
+			MethodName: "Coordinator",
+			Handler:    _DistributedService_Coordinator_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
