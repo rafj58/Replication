@@ -1,18 +1,14 @@
 package main
 
 import (
-	"context"
 	"encoding/csv"
 	"flag"
 	"fmt"
 	"log"
-	"math"
-	"math/rand"
 	"net"
 	"os"
 	"strconv"
 	"sync"
-	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -40,11 +36,9 @@ const (
 )
 
 var (
-	my_row = flag.Int("row", 1, "Indicate the row of parameter file for this peer") // set with "-row <port>" in terminal
-	name   = flag.String("name", "peer", "name of the peer")
-	// Lamport variable
-	lamport_time = 0
-	confFile     = "confFile.csv"
+	my_row   = flag.Int("row", 1, "Indicate the row of parameter file for this peer") // set with "-row <port>" in terminal
+	name     = flag.String("name", "peer", "name of the peer")
+	confFile = "../confFile.csv"
 	// default values for address and port
 	my_address = "127.0.0.1"
 	my_port    = 50050
@@ -85,6 +79,12 @@ func main() {
 			found = true
 			break
 		}
+		dserver := &DServer{
+			name:    *name,
+			address: my_address,
+			port:    my_port,
+		}
+		connectToNode(dserver)
 	}
 
 	if !found {
@@ -92,11 +92,6 @@ func main() {
 		return
 	}
 
-	dserver := &DServer{
-		name:    *name,
-		address: my_address,
-		port:    my_port,
-	}
 	// wait for opening port to listen
 	wg.Add(1)
 
@@ -138,7 +133,7 @@ func StartListen(dserver *DServer) {
 }
 
 // Connect to others peer
-func connectToOthersPeer(dserver *DServer) {
+func connectToNode(dserver *DServer) {
 	// read csv file
 	file, err := os.Open(confFile)
 	if err != nil {
@@ -178,104 +173,4 @@ func connectToPeer(address string, port int) proto.DistributedServiceClient {
 		log.Printf("Lamport %d: Created TCP connection to the %s address at port %d\n", lamport_time, address, port)
 	}
 	return proto.NewDistributedServiceClient(conn)
-}
-
-func (peer *Peer) AskPermission(ctx context.Context, in *proto.Question) (*proto.Answer, error) {
-	setTime(int(in.Time))
-	// check if the peer requesting permission is not in the list of connected peers
-	// it can be a reconnected peer or one not present in the configuration file
-	peerRef := in.ClientReference.ClientAddress + ":" + strconv.Itoa(int(in.ClientReference.ClientPort))
-	log.Printf("Lamport %d: Peer [%s] asked for a mutual exection", lamport_time, peerRef)
-	found := false
-	for index := range peers {
-		if index == peerRef {
-			found = true
-			break
-		}
-	}
-	// receive request from a not known peer
-	if !found {
-		connection := connectToPeer(in.ClientReference.ClientAddress, int(in.ClientReference.ClientPort))
-		peers[peerRef] = connection
-	}
-	// Ricart–Agrawala Algorithm
-	if (state == Held) || (state == Wanted && (in.Time > int32(myRequestTime))) {
-		// queue the reply (just wait unline i'm done)
-		for state == Held || state == Wanted {
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
-	log.Printf("Lamport %d: Peer [%s] authorized to do mutual exection", lamport_time, peerRef)
-	increaseTime()
-	return &proto.Answer{
-		Reply: true,
-		Time:  int32(lamport_time),
-	}, nil
-
-}
-
-func doSomething() {
-	for {
-		var text string
-		log.Printf("Insert 'mutual' to do mutual execution or 'exit' to quit or anything else "+
-			"to increment time [Actual Lamport Time: %d] ", lamport_time)
-		fmt.Scanln(&text)
-
-		increaseTime() // an event occurred
-		if text == "exit" {
-			break
-		}
-
-		if text != "mutual" {
-			continue
-		}
-
-		state = Wanted
-		myRequestTime = lamport_time
-
-		// Peers enters the critical section if it has received the REPLY message from all other sites.
-		peerRef := &proto.ClientReference{
-			ClientAddress: my_address,
-			ClientPort:    int32(my_port),
-			ClientName:    *name,
-		}
-		for index, peer := range peers {
-			increaseTime()
-			log.Printf("Lamport %d: Asked Peer [%s] for permission", lamport_time, index)
-			answer, err := peer.AskPermission(context.Background(),
-				&proto.Question{
-					ClientReference: peerRef,
-					Time:            int32(myRequestTime),
-				})
-			if err != nil {
-				log.Printf("Lamport %d: Peer [%s] no more available, removed from connected peers", lamport_time, index)
-				delete(peers, index)
-				continue
-			} else {
-				setTime(int(answer.Time))
-				log.Printf("Lamport %d: Got permission from peer [%s]", lamport_time, index)
-			}
-		}
-		// do critical section
-		criticalSection()
-	}
-}
-
-func criticalSection() {
-	increaseTime()
-	state = Held
-	log.Printf("Lamport %d: Starting critical section", lamport_time)
-	time.Sleep(time.Duration(rand.Intn(4)+10) * time.Second)
-	increaseTime()
-	log.Printf("Lamport %d: Ending critical section", lamport_time)
-	state = Released
-}
-
-func increaseTime() {
-	lamport_time++
-}
-
-func setTime(received int) {
-	max := math.Max(float64(received), float64(lamport_time))
-	lamport_time = int(max + 1)
 }
