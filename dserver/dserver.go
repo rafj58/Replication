@@ -113,7 +113,7 @@ func main() {
 
 func StartListen(dserver *DServer) {
 	// Create a new grpc server
-	grpcPeer := grpc.NewServer()
+	grpcDServer := grpc.NewServer()
 
 	increaseTime()
 	// Make the peer listen at the given port (convert int port to string)
@@ -122,13 +122,13 @@ func StartListen(dserver *DServer) {
 	if err != nil {
 		log.Fatalf("Could not create the peer %v", err)
 	}
-	log.Printf("Lamport %d: Started peer receiving at address: %s and at port: %d\n", lamport_time, peer.address, peer.port)
+	log.Printf("Lamport %d: Started peer receiving at address: %s and at port: %d\n", lamport_time, dserver.address, dserver.port)
 	wg.Done()
 
 	// Register the grpc service
 	increaseTime()
-	proto.RegisterMutualExlusionServiceServer(grpcPeer, peer)
-	serveError := grpcPeer.Serve(listener)
+	proto.RegisterDistributedServiceServer(grpcDServer, dserver)
+	serveError := grpcDServer.Serve(listener)
 
 	if serveError != nil {
 		log.Fatalf("Could not serve listener")
@@ -138,7 +138,7 @@ func StartListen(dserver *DServer) {
 }
 
 // Connect to others peer
-func connectToOthersPeer(p *Peer) {
+func connectToOthersPeer(dserver *DServer) {
 	// read csv file
 	file, err := os.Open(confFile)
 	if err != nil {
@@ -168,7 +168,7 @@ func connectToOthersPeer(p *Peer) {
 	}
 }
 
-func connectToPeer(address string, port int) proto.MutualExlusionServiceClient {
+func connectToPeer(address string, port int) proto.DistributedServiceClient {
 	// Dial doesn't check if the peer at that address:host is effectivly on (simply prepare TCP connection)
 	increaseTime()
 	conn, err := grpc.Dial(address+":"+strconv.Itoa(port), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -177,7 +177,7 @@ func connectToPeer(address string, port int) proto.MutualExlusionServiceClient {
 	} else {
 		log.Printf("Lamport %d: Created TCP connection to the %s address at port %d\n", lamport_time, address, port)
 	}
-	return proto.NewMutualExlusionServiceClient(conn)
+	return proto.NewDistributedServiceClient(conn)
 }
 
 func (peer *Peer) AskPermission(ctx context.Context, in *proto.Question) (*proto.Answer, error) {
