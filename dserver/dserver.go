@@ -49,7 +49,7 @@ var (
 	my_address = "127.0.0.1"
 	my_port    = 50050
 	// store tcp connection to others peers
-	peers = make(map[string]proto.MutualExlusionServiceClient)
+	peers = make(map[string]proto.UnimplementedDistributedServiceServer)
 	// state of the distributed mutex
 	state = Released
 	// lamport time of this peers request
@@ -92,7 +92,7 @@ func main() {
 		return
 	}
 
-	peer := &Peer{
+	dserver := &DServer{
 		name:    *name,
 		address: my_address,
 		port:    my_port,
@@ -101,34 +101,34 @@ func main() {
 	wg.Add(1)
 
 	// open the port to new connections
-	go StartListen(peer)
+	go StartListen(dserver)
 
 	wg.Wait()
 	// Preparate tcp connection to the others client
-	connectToOthersPeer(peer)
+	connectToOthersPeer(dserver)
 
 	// user interface menu
 	doSomething()
 }
 
-func StartListen(peer *Peer) {
+func StartListen(dserver *DServer) {
 	// Create a new grpc server
-	grpcPeer := grpc.NewServer()
+	grpcDServer := grpc.NewServer()
 
 	increaseTime()
 	// Make the peer listen at the given port (convert int port to string)
-	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", peer.address, strconv.Itoa(peer.port)))
+	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", dserver.address, strconv.Itoa(dserver.port)))
 
 	if err != nil {
 		log.Fatalf("Could not create the peer %v", err)
 	}
-	log.Printf("Lamport %d: Started peer receiving at address: %s and at port: %d\n", lamport_time, peer.address, peer.port)
+	log.Printf("Lamport %d: Started peer receiving at address: %s and at port: %d\n", lamport_time, dserver.address, dserver.port)
 	wg.Done()
 
 	// Register the grpc service
 	increaseTime()
-	proto.RegisterMutualExlusionServiceServer(grpcPeer, peer)
-	serveError := grpcPeer.Serve(listener)
+	proto.RegisterDistributedServiceServer(grpcDServer, dserver)
+	serveError := grpcDServer.Serve(listener)
 
 	if serveError != nil {
 		log.Fatalf("Could not serve listener")
@@ -138,7 +138,7 @@ func StartListen(peer *Peer) {
 }
 
 // Connect to others peer
-func connectToOthersPeer(p *Peer) {
+func connectToOthersPeer(dserver *DServer) {
 	// read csv file
 	file, err := os.Open(confFile)
 	if err != nil {
@@ -168,7 +168,7 @@ func connectToOthersPeer(p *Peer) {
 	}
 }
 
-func connectToPeer(address string, port int) proto.MutualExlusionServiceClient {
+func connectToPeer(address string, port int) proto.DistributedServiceClient {
 	// Dial doesn't check if the peer at that address:host is effectivly on (simply prepare TCP connection)
 	increaseTime()
 	conn, err := grpc.Dial(address+":"+strconv.Itoa(port), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -177,7 +177,7 @@ func connectToPeer(address string, port int) proto.MutualExlusionServiceClient {
 	} else {
 		log.Printf("Lamport %d: Created TCP connection to the %s address at port %d\n", lamport_time, address, port)
 	}
-	return proto.NewMutualExlusionServiceClient(conn)
+	return proto.NewDistributedServiceClient(conn)
 }
 
 func (peer *Peer) AskPermission(ctx context.Context, in *proto.Question) (*proto.Answer, error) {
