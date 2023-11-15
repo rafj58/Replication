@@ -29,9 +29,9 @@ message Outcome {
 service AuctionService {
     rpc Bid (Amount) returns (Acknowledge);
     rpc Result (Empty) returns (Outcome);
+    rpc AskForMaster (Empty) returns (Master);
 }
 
 service DistributedService {
-    rpc AskForMaster (Empty) returns (Master);
     rpc Election (Master) returns (Master);
 }

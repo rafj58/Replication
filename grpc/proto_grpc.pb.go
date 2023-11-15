@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type AuctionServiceClient interface {
 	Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Acknowledge, error)
 	Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Outcome, error)
+	AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Master, error)
 }
 
 type auctionServiceClient struct {
@@ -52,12 +53,22 @@ func (c *auctionServiceClient) Result(ctx context.Context, in *Empty, opts ...gr
 	return out, nil
 }
 
+func (c *auctionServiceClient) AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Master, error) {
+	out := new(Master)
+	err := c.cc.Invoke(ctx, "/proto.AuctionService/AskForMaster", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuctionServiceServer is the server API for AuctionService service.
 // All implementations must embed UnimplementedAuctionServiceServer
 // for forward compatibility
 type AuctionServiceServer interface {
 	Bid(context.Context, *Amount) (*Acknowledge, error)
 	Result(context.Context, *Empty) (*Outcome, error)
+	AskForMaster(context.Context, *Empty) (*Master, error)
 	mustEmbedUnimplementedAuctionServiceServer()
 }
 
@@ -70,6 +81,9 @@ func (UnimplementedAuctionServiceServer) Bid(context.Context, *Amount) (*Acknowl
 }
 func (UnimplementedAuctionServiceServer) Result(context.Context, *Empty) (*Outcome, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Result not implemented")
+}
+func (UnimplementedAuctionServiceServer) AskForMaster(context.Context, *Empty) (*Master, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AskForMaster not implemented")
 }
 func (UnimplementedAuctionServiceServer) mustEmbedUnimplementedAuctionServiceServer() {}
 
@@ -120,6 +134,24 @@ func _AuctionService_Result_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuctionService_AskForMaster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuctionServiceServer).AskForMaster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.AuctionService/AskForMaster",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuctionServiceServer).AskForMaster(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuctionService_ServiceDesc is the grpc.ServiceDesc for AuctionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -135,6 +167,10 @@ var AuctionService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "Result",
 			Handler:    _AuctionService_Result_Handler,
 		},
+		{
+			MethodName: "AskForMaster",
+			Handler:    _AuctionService_AskForMaster_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "grpc/proto.proto",
@@ -144,7 +180,6 @@ var AuctionService_ServiceDesc = grpc.ServiceDesc{
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DistributedServiceClient interface {
-	AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Master, error)
 	Election(ctx context.Context, in *Master, opts ...grpc.CallOption) (*Master, error)
 }
 
@@ -154,15 +189,6 @@ type distributedServiceClient struct {
 
 func NewDistributedServiceClient(cc grpc.ClientConnInterface) DistributedServiceClient {
 	return &distributedServiceClient{cc}
-}
-
-func (c *distributedServiceClient) AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Master, error) {
-	out := new(Master)
-	err := c.cc.Invoke(ctx, "/proto.DistributedService/AskForMaster", in, out, opts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
 func (c *distributedServiceClient) Election(ctx context.Context, in *Master, opts ...grpc.CallOption) (*Master, error) {
@@ -178,7 +204,6 @@ func (c *distributedServiceClient) Election(ctx context.Context, in *Master, opt
 // All implementations must embed UnimplementedDistributedServiceServer
 // for forward compatibility
 type DistributedServiceServer interface {
-	AskForMaster(context.Context, *Empty) (*Master, error)
 	Election(context.Context, *Master) (*Master, error)
 	mustEmbedUnimplementedDistributedServiceServer()
 }
@@ -187,9 +212,6 @@ type DistributedServiceServer interface {
 type UnimplementedDistributedServiceServer struct {
 }
 
-func (UnimplementedDistributedServiceServer) AskForMaster(context.Context, *Empty) (*Master, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method AskForMaster not implemented")
-}
 func (UnimplementedDistributedServiceServer) Election(context.Context, *Master) (*Master, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Election not implemented")
 }
@@ -204,24 +226,6 @@ type UnsafeDistributedServiceServer interface {
 
 func RegisterDistributedServiceServer(s grpc.ServiceRegistrar, srv DistributedServiceServer) {
 	s.RegisterService(&DistributedService_ServiceDesc, srv)
-}
-
-func _DistributedService_AskForMaster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(DistributedServiceServer).AskForMaster(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/proto.DistributedService/AskForMaster",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(DistributedServiceServer).AskForMaster(ctx, req.(*Empty))
-	}
-	return interceptor(ctx, in, info, handler)
 }
 
 func _DistributedService_Election_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -249,10 +253,6 @@ var DistributedService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "proto.DistributedService",
 	HandlerType: (*DistributedServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "AskForMaster",
-			Handler:    _DistributedService_AskForMaster_Handler,
-		},
 		{
 			MethodName: "Election",
 			Handler:    _DistributedService_Election_Handler,
