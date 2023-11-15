@@ -27,15 +27,13 @@ type DServer struct {
 	address string
 	port    int
 	id      int
-	// mutual exclusion on master variables (address & port)
-	mutex sync.Mutex
 }
 
 var (
 	my_row   = flag.Int("row", 1, "Indicate the row of parameter file for this peer") // set with "-row <port>" in terminal
 	name     = flag.String("name", "peer", "name of the peer")
 	confFile = "confFile.csv"
-	// store  tcp connection to others peers of the distributed server -id is the key
+	// store  tcp connection to others peers of the distributed server - id is the key -
 	peers = make(map[int]proto.DistributedServiceClient)
 	// wait for listen to be open
 	wg sync.WaitGroup
@@ -43,10 +41,16 @@ var (
 	masterAddr string
 	masterPort int
 	masterId   int
+	// notifies receipt of a coordination message
+	coordination_msg chan bool
 )
 
 func main() {
 	flag.Parse()
+	if len(os.Args) < 2 {
+		fmt.Println("Missing row parameter, use -row")
+		return
+	}
 
 	// read from confFile.csv and prepare TCP connections
 	csvFile, err := os.Open(confFile)
@@ -71,7 +75,6 @@ func main() {
 		peerPort, _ := strconv.Atoi(row[1])
 		peerId, _ := strconv.Atoi(row[2])
 		if index == *my_row {
-			fmt.Printf("Your settings are : %s address, %d port, %d id\n", peerAddress, peerPort, peerId)
 			dserver = &DServer{
 				name:    *name,
 				address: peerAddress,
@@ -100,25 +103,26 @@ func main() {
 
 	wg.Wait()
 
-	me := &proto.Peer{
-		Address: dserver.address,
-		Port:    int32(dserver.port),
-		Id:      int32(dserver.id),
-	}
+	findMaster(dserver)
 
-	if !sendElectionToBigger(dserver, me) {
-		// no one bigger replied, i'am the master
-		masterAddr = dserver.address
-		masterPort = dserver.port
-		masterId = dserver.id
+	go checkMaster(dserver)
+
+	for {
+		var text string
+		log.Printf("Insert 'exit' to quit\n")
+		fmt.Scanln(&text)
+
+		if text == "exit" {
+			break
+		}
 	}
 }
 
 func StartListen(dserver *DServer) {
-	// Create a new grpc server
+	// create a new grpc server
 	grpcDServer := grpc.NewServer()
 
-	// Make the peer listen at the given port (convert int port to string)
+	// make the peer listen at the given port
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", dserver.address, strconv.Itoa(dserver.port)))
 
 	if err != nil {
@@ -127,7 +131,7 @@ func StartListen(dserver *DServer) {
 	log.Printf("Started peer receiving at address: %s and at port: %d\n", dserver.address, dserver.port)
 	wg.Done()
 
-	// Register the grpc services
+	// register the grpc services
 	proto.RegisterDistributedServiceServer(grpcDServer, dserver)
 	proto.RegisterAuctionServiceServer(grpcDServer, dserver)
 
@@ -138,7 +142,6 @@ func StartListen(dserver *DServer) {
 	log.Printf("Started gRPC service")
 }
 
-// Connect to other peer
 func connectToPeer(address string, port int) proto.DistributedServiceClient {
 	// Dial simply prepare TCP connection
 	conn, err := grpc.Dial(address+":"+strconv.Itoa(port), grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -150,21 +153,22 @@ func connectToPeer(address string, port int) proto.DistributedServiceClient {
 	return proto.NewDistributedServiceClient(conn)
 }
 
-/*----  Published services for client ----*/
+/*----  Published services for client  TO DO----*/
 func (ds *DServer) AskForMaster(ctx context.Context, in *proto.Empty) (*proto.Peer, error) {
 	// return the current master
 	return &proto.Peer{
 		Address: masterAddr,
-		Port:    int32(masterPort)}, nil
+		Port:    int32(masterPort),
+		Id:      int32(masterId)}, nil
 }
 
-func (ds *DServer) Bid(ctx context.Context, in *proto.Amount) (*proto.Acknowledge, error) {
+func (ds *DServer) Bid(ctx context.Context, in *proto.Amount) (*proto.Empty, error) {
 	if !iAmMaster(ds) {
 		return nil, status.Errorf(codes.FailedPrecondition, "I'am not the master")
 	}
 	// i'am the master
-	// change the amount TO DO
-	return &proto.Acknowledge{Status: true}, nil
+	// TO DO
+	return &proto.Empty{}, nil
 }
 
 func (ds *DServer) Result(ctx context.Context, in *proto.Empty) (*proto.Outcome, error) {
@@ -179,74 +183,124 @@ func (ds *DServer) Result(ctx context.Context, in *proto.Empty) (*proto.Outcome,
 }
 
 /*------ Published services for other peers ----*/
-
-func (ds *DServer) Election(ctx context.Context, in *proto.Peer) (*proto.Acknowledge, error) {
+func (ds *DServer) Election(ctx context.Context, in *proto.Peer) (*proto.Empty, error) {
 	if ds.id < int(in.Id) {
 		return nil, status.Errorf(codes.FailedPrecondition, "Peer %d has a lower ID than peer %d", ds.id, in.Id)
 	}
 
-	ds.mutex.Lock()
-	defer ds.mutex.Unlock()
+	log.Printf("Peer [%s:%d, %d] received election message from [%s:%d, %d]\n", ds.address, ds.port, ds.id, in.Address, in.Port, in.Id)
 
-	log.Printf("Peer [%s:%d, %d] received election message from [%s:%d, %d]\n",
-		ds.address, ds.port, ds.id, in.Address, in.Port, in.Id)
+	// send election to bigger ID than me and reply with ack
+	findMaster(ds)
+	return &proto.Empty{}, nil
+}
 
-	// forward election to bigger ID than me and reply with ack
-	if !sendElectionToBigger(ds, in) {
-		log.Fatal("Some error!")
-	} else {
-		// no one bigger replied, i'am the coordinator
-		// TO DO
+func (ds *DServer) Coordinator(ctx context.Context, in *proto.Peer) (*proto.Empty, error) {
+	select {
+	case coordination_msg <- true:
+		break
 	}
-	// to remove
-	return &proto.Acknowledge{
-		Status: true}, nil
+
+	log.Printf("Peer [%s:%d, %d] is the new coordinator.\n", in.Address, in.Port, in.Id)
+	masterAddr = in.Address
+	masterPort = int(in.Port)
+	masterId = int(in.Id)
+
+	return &proto.Empty{}, nil
 }
 
-func (ds *DServer) Coordinator(ctx context.Context, in *proto.Peer) (*proto.Acknowledge, error) {
-	// i am the bully
-	log.Printf("Peer [%s:%d, %d] is the new coordinator.\n", ds.address, ds.port, ds.id)
-	masterAddr = ds.address
-	masterPort = ds.port
-	return &proto.Acknowledge{
-		Status: true}, nil
+func (ds *DServer) Ping(ctx context.Context, in *proto.Empty) (*proto.Empty, error) {
+	return &proto.Empty{}, nil
 }
 
-func setMaster(ds *DServer) {
-	// set election message to peer with id bigger than mine
-	found_bigger := false
-
-	if !found_bigger {
-		log.Fatal("Some error!")
-	}
-}
-
+/*--- Function to make code more readable and manage the master ---*/
 func iAmMaster(ds *DServer) bool {
 	return (ds.address == masterAddr && ds.port == masterPort && ds.id == masterId)
 }
 
+func findMaster(ds *DServer) {
+
+	me := &proto.Peer{
+		Address: ds.address,
+		Port:    int32(ds.port),
+		Id:      int32(ds.id),
+	}
+	if !sendElectionToBigger(ds, me) {
+		// i'am the master
+		masterAddr = ds.address
+		masterPort = ds.port
+		masterId = ds.id
+		log.Printf("I'am the current master!\n")
+		sendCoordinatorToLower(ds, me)
+	} else {
+		// wait for coordination message
+		timer := time.NewTimer(5 * time.Second)
+		select {
+		case <-timer.C:
+			log.Printf("No one of the bigger id peer send a coordination msg")
+			// retry
+			findMaster(ds)
+			break
+		case <-coordination_msg:
+			break
+		}
+	}
+}
+
+// election message to bigger id peers (1 second to reply)
 func sendElectionToBigger(ds *DServer, msg *proto.Peer) bool {
-	// foward election to bigger id peers
-	timeout := 1 * time.Second
-	found_bigger := false
+	found_bigger_active := false
+
 	for index, conn := range peers {
 		if index > ds.id {
-			select {
-			case <-time.After(timeout):
-				log.Printf("Timeout while trying to send election message to peer id: %d", index)
+			_, err := conn.Election(context.Background(), msg)
+			if err != nil {
+				//log.Printf("Failed to send election message to peer id %d", index)
 				// continue with other peers
 				continue
-			default:
-				_, err := conn.Election(context.Background(), msg)
-				if err != nil {
-					log.Printf("Failed to send election message to peer id %d: %v", index, err)
-					// continue with other peers
-					continue
+			}
+			log.Printf("Sent selection message to peer id %d", index)
+			found_bigger_active = true
+		}
+	}
+	return found_bigger_active
+}
+
+func sendCoordinatorToLower(ds *DServer, msg *proto.Peer) {
+	for index, conn := range peers {
+		if index < ds.id {
+			_, err := conn.Coordinator(context.Background(), msg)
+			if err != nil {
+				//log.Printf("Failed to send coordinator message to peer id %d", index)
+				// continue with other peers
+				continue
+			}
+			log.Printf("Sent coordinator message to peer id %d", index)
+		}
+	}
+}
+
+/* --- functions to monitor master status ---*/
+func checkMaster(ds *DServer) {
+	for {
+		select {
+		case <-time.NewTicker(5 * time.Second).C:
+			if !iAmMaster(ds) {
+				log.Print("Check if the master is available")
+				if !pingMaster() {
+					// master is not available
+					log.Printf("Master is not available")
+					findMaster(ds)
 				}
-				// check resp
-				found_bigger = true
 			}
 		}
 	}
-	return found_bigger
+}
+
+func pingMaster() bool {
+	_, err := peers[masterId].Ping(context.Background(), &proto.Empty{})
+	if err != nil {
+		return false
+	}
+	return true
 }
