@@ -18,86 +18,244 @@ import (
 // Requires gRPC-Go v1.32.0 or later.
 const _ = grpc.SupportPackageIsVersion7
 
-// MutualExlusionServiceClient is the client API for MutualExlusionService service.
+// AuctionServiceClient is the client API for AuctionService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type MutualExlusionServiceClient interface {
-	AskPermission(ctx context.Context, in *Question, opts ...grpc.CallOption) (*Answer, error)
+type AuctionServiceClient interface {
+	Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Acknowledge, error)
+	Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Outcome, error)
 }
 
-type mutualExlusionServiceClient struct {
+type auctionServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewMutualExlusionServiceClient(cc grpc.ClientConnInterface) MutualExlusionServiceClient {
-	return &mutualExlusionServiceClient{cc}
+func NewAuctionServiceClient(cc grpc.ClientConnInterface) AuctionServiceClient {
+	return &auctionServiceClient{cc}
 }
 
-func (c *mutualExlusionServiceClient) AskPermission(ctx context.Context, in *Question, opts ...grpc.CallOption) (*Answer, error) {
-	out := new(Answer)
-	err := c.cc.Invoke(ctx, "/proto.MutualExlusionService/AskPermission", in, out, opts...)
+func (c *auctionServiceClient) Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Acknowledge, error) {
+	out := new(Acknowledge)
+	err := c.cc.Invoke(ctx, "/proto.AuctionService/Bid", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// MutualExlusionServiceServer is the server API for MutualExlusionService service.
-// All implementations must embed UnimplementedMutualExlusionServiceServer
+func (c *auctionServiceClient) Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Outcome, error) {
+	out := new(Outcome)
+	err := c.cc.Invoke(ctx, "/proto.AuctionService/Result", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AuctionServiceServer is the server API for AuctionService service.
+// All implementations must embed UnimplementedAuctionServiceServer
 // for forward compatibility
-type MutualExlusionServiceServer interface {
-	AskPermission(context.Context, *Question) (*Answer, error)
-	mustEmbedUnimplementedMutualExlusionServiceServer()
+type AuctionServiceServer interface {
+	Bid(context.Context, *Amount) (*Acknowledge, error)
+	Result(context.Context, *Empty) (*Outcome, error)
+	mustEmbedUnimplementedAuctionServiceServer()
 }
 
-// UnimplementedMutualExlusionServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedMutualExlusionServiceServer struct {
+// UnimplementedAuctionServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedAuctionServiceServer struct {
 }
 
-func (UnimplementedMutualExlusionServiceServer) AskPermission(context.Context, *Question) (*Answer, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method AskPermission not implemented")
+func (UnimplementedAuctionServiceServer) Bid(context.Context, *Amount) (*Acknowledge, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Bid not implemented")
 }
-func (UnimplementedMutualExlusionServiceServer) mustEmbedUnimplementedMutualExlusionServiceServer() {}
+func (UnimplementedAuctionServiceServer) Result(context.Context, *Empty) (*Outcome, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Result not implemented")
+}
+func (UnimplementedAuctionServiceServer) mustEmbedUnimplementedAuctionServiceServer() {}
 
-// UnsafeMutualExlusionServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to MutualExlusionServiceServer will
+// UnsafeAuctionServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AuctionServiceServer will
 // result in compilation errors.
-type UnsafeMutualExlusionServiceServer interface {
-	mustEmbedUnimplementedMutualExlusionServiceServer()
+type UnsafeAuctionServiceServer interface {
+	mustEmbedUnimplementedAuctionServiceServer()
 }
 
-func RegisterMutualExlusionServiceServer(s grpc.ServiceRegistrar, srv MutualExlusionServiceServer) {
-	s.RegisterService(&MutualExlusionService_ServiceDesc, srv)
+func RegisterAuctionServiceServer(s grpc.ServiceRegistrar, srv AuctionServiceServer) {
+	s.RegisterService(&AuctionService_ServiceDesc, srv)
 }
 
-func _MutualExlusionService_AskPermission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(Question)
+func _AuctionService_Bid_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Amount)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MutualExlusionServiceServer).AskPermission(ctx, in)
+		return srv.(AuctionServiceServer).Bid(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/proto.MutualExlusionService/AskPermission",
+		FullMethod: "/proto.AuctionService/Bid",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MutualExlusionServiceServer).AskPermission(ctx, req.(*Question))
+		return srv.(AuctionServiceServer).Bid(ctx, req.(*Amount))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// MutualExlusionService_ServiceDesc is the grpc.ServiceDesc for MutualExlusionService service.
+func _AuctionService_Result_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuctionServiceServer).Result(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.AuctionService/Result",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuctionServiceServer).Result(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AuctionService_ServiceDesc is the grpc.ServiceDesc for AuctionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var MutualExlusionService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.MutualExlusionService",
-	HandlerType: (*MutualExlusionServiceServer)(nil),
+var AuctionService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.AuctionService",
+	HandlerType: (*AuctionServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "AskPermission",
-			Handler:    _MutualExlusionService_AskPermission_Handler,
+			MethodName: "Bid",
+			Handler:    _AuctionService_Bid_Handler,
+		},
+		{
+			MethodName: "Result",
+			Handler:    _AuctionService_Result_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "grpc/proto.proto",
+}
+
+// DistributedServiceClient is the client API for DistributedService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type DistributedServiceClient interface {
+	AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Master, error)
+	Election(ctx context.Context, in *Master, opts ...grpc.CallOption) (*Master, error)
+}
+
+type distributedServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewDistributedServiceClient(cc grpc.ClientConnInterface) DistributedServiceClient {
+	return &distributedServiceClient{cc}
+}
+
+func (c *distributedServiceClient) AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Master, error) {
+	out := new(Master)
+	err := c.cc.Invoke(ctx, "/proto.DistributedService/AskForMaster", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *distributedServiceClient) Election(ctx context.Context, in *Master, opts ...grpc.CallOption) (*Master, error) {
+	out := new(Master)
+	err := c.cc.Invoke(ctx, "/proto.DistributedService/Election", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DistributedServiceServer is the server API for DistributedService service.
+// All implementations must embed UnimplementedDistributedServiceServer
+// for forward compatibility
+type DistributedServiceServer interface {
+	AskForMaster(context.Context, *Empty) (*Master, error)
+	Election(context.Context, *Master) (*Master, error)
+	mustEmbedUnimplementedDistributedServiceServer()
+}
+
+// UnimplementedDistributedServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedDistributedServiceServer struct {
+}
+
+func (UnimplementedDistributedServiceServer) AskForMaster(context.Context, *Empty) (*Master, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AskForMaster not implemented")
+}
+func (UnimplementedDistributedServiceServer) Election(context.Context, *Master) (*Master, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Election not implemented")
+}
+func (UnimplementedDistributedServiceServer) mustEmbedUnimplementedDistributedServiceServer() {}
+
+// UnsafeDistributedServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to DistributedServiceServer will
+// result in compilation errors.
+type UnsafeDistributedServiceServer interface {
+	mustEmbedUnimplementedDistributedServiceServer()
+}
+
+func RegisterDistributedServiceServer(s grpc.ServiceRegistrar, srv DistributedServiceServer) {
+	s.RegisterService(&DistributedService_ServiceDesc, srv)
+}
+
+func _DistributedService_AskForMaster_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DistributedServiceServer).AskForMaster(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.DistributedService/AskForMaster",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DistributedServiceServer).AskForMaster(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DistributedService_Election_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Master)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DistributedServiceServer).Election(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/proto.DistributedService/Election",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DistributedServiceServer).Election(ctx, req.(*Master))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// DistributedService_ServiceDesc is the grpc.ServiceDesc for DistributedService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var DistributedService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.DistributedService",
+	HandlerType: (*DistributedServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "AskForMaster",
+			Handler:    _DistributedService_AskForMaster_Handler,
+		},
+		{
+			MethodName: "Election",
+			Handler:    _DistributedService_Election_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

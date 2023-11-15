@@ -4,23 +4,34 @@ option go_package = "grpc/proto";
 
 package proto;
 
-message ClientReference {
-    string client_address = 1;
-    int32 client_port = 2;
-    string client_name = 3;
+message Empty {
+
 }
 
-message Question {
-    // time will be represented by Lamport clocks incremented when a message is received or sended
-    ClientReference client_reference = 1;
-    int32 time = 2;
+message Master{
+    string address = 1;
+    int32 port = 2;
 }
 
-message Answer{
-    bool reply = 1;
-    int32 time = 2;
+message Amount {
+    int32 amount = 1;
 }
 
-service MutualExlusionService {
-    rpc AskPermission (Question) returns (Answer);
+message Acknowledge {
+    bool status = 1;
+}
+
+message Outcome {
+    int32 highest = 1;
+    bool closed = 2;
+}
+
+service AuctionService {
+    rpc Bid (Amount) returns (Acknowledge);
+    rpc Result (Empty) returns (Outcome);
+}
+
+service DistributedService {
+    rpc AskForMaster (Empty) returns (Master);
+    rpc Election (Master) returns (Master);
 }
