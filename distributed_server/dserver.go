@@ -17,15 +17,16 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	proto "MutualExclusion/grpc"
+	proto "Replication/grpc"
 )
 
 // link for Ricart & Agrawala algorithm https://www.geeksforgeeks.org/ricart-agrawala-algorithm-in-mutual-exclusion-in-distributed-system/
 // we need only the port where we receive messages
 // output port is decided automatically randomly by operating system
 
-type Peer struct {
-	proto.UnimplementedMutualExlusionServiceServer
+type DServer struct {
+	proto.UnimplementedAuctionServiceServer
+	proto.UnimplementedDistributedServiceServer
 	name    string
 	address string
 	port    int
