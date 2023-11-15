@@ -4,9 +4,6 @@ option go_package = "grpc/proto";
 
 package proto;
 
-message Empty {
-}
-
 message Peer{
     string address = 1;
     int32 port = 2;
@@ -17,24 +14,23 @@ message Amount {
     int32 amount = 1;
 }
 
-message Acknowledge {
-    bool status = 1;
-}
-
 message Outcome {
     int32 highest = 1;
     bool closed = 2;
 }
 
+message Empty{}
+
 service AuctionService {
-    rpc Bid (Amount) returns (Acknowledge);
+    rpc Bid (Amount) returns (Empty);
     rpc Result (Empty) returns (Outcome);
     rpc AskForMaster (Empty) returns (Peer);
 }
 
 service DistributedService {
     // bully algorithm
-    rpc Election(Peer) returns (Acknowledge);
-    rpc Coordinator(Peer) returns (Acknowledge);
+    rpc Election(Peer) returns (Empty);
+    rpc Coordinator(Peer) returns (Empty);
+    rpc Ping(Empty) returns (Empty);
 }
     

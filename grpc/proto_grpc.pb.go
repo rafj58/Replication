@@ -28,7 +28,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AuctionServiceClient interface {
-	Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Acknowledge, error)
+	Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Empty, error)
 	Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Outcome, error)
 	AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Peer, error)
 }
@@ -41,8 +41,8 @@ func NewAuctionServiceClient(cc grpc.ClientConnInterface) AuctionServiceClient {
 	return &auctionServiceClient{cc}
 }
 
-func (c *auctionServiceClient) Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Acknowledge, error) {
-	out := new(Acknowledge)
+func (c *auctionServiceClient) Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
 	err := c.cc.Invoke(ctx, AuctionService_Bid_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func (c *auctionServiceClient) AskForMaster(ctx context.Context, in *Empty, opts
 // All implementations must embed UnimplementedAuctionServiceServer
 // for forward compatibility
 type AuctionServiceServer interface {
-	Bid(context.Context, *Amount) (*Acknowledge, error)
+	Bid(context.Context, *Amount) (*Empty, error)
 	Result(context.Context, *Empty) (*Outcome, error)
 	AskForMaster(context.Context, *Empty) (*Peer, error)
 	mustEmbedUnimplementedAuctionServiceServer()
@@ -82,7 +82,7 @@ type AuctionServiceServer interface {
 type UnimplementedAuctionServiceServer struct {
 }
 
-func (UnimplementedAuctionServiceServer) Bid(context.Context, *Amount) (*Acknowledge, error) {
+func (UnimplementedAuctionServiceServer) Bid(context.Context, *Amount) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Bid not implemented")
 }
 func (UnimplementedAuctionServiceServer) Result(context.Context, *Empty) (*Outcome, error) {
@@ -185,6 +185,7 @@ var AuctionService_ServiceDesc = grpc.ServiceDesc{
 const (
 	DistributedService_Election_FullMethodName    = "/proto.DistributedService/Election"
 	DistributedService_Coordinator_FullMethodName = "/proto.DistributedService/Coordinator"
+	DistributedService_Ping_FullMethodName        = "/proto.DistributedService/Ping"
 )
 
 // DistributedServiceClient is the client API for DistributedService service.
@@ -192,8 +193,9 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DistributedServiceClient interface {
 	// bully algorithm
-	Election(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Acknowledge, error)
-	Coordinator(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Acknowledge, error)
+	Election(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Empty, error)
+	Coordinator(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Empty, error)
+	Ping(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
 }
 
 type distributedServiceClient struct {
@@ -204,8 +206,8 @@ func NewDistributedServiceClient(cc grpc.ClientConnInterface) DistributedService
 	return &distributedServiceClient{cc}
 }
 
-func (c *distributedServiceClient) Election(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Acknowledge, error) {
-	out := new(Acknowledge)
+func (c *distributedServiceClient) Election(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
 	err := c.cc.Invoke(ctx, DistributedService_Election_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -213,9 +215,18 @@ func (c *distributedServiceClient) Election(ctx context.Context, in *Peer, opts 
 	return out, nil
 }
 
-func (c *distributedServiceClient) Coordinator(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Acknowledge, error) {
-	out := new(Acknowledge)
+func (c *distributedServiceClient) Coordinator(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
 	err := c.cc.Invoke(ctx, DistributedService_Coordinator_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *distributedServiceClient) Ping(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, DistributedService_Ping_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -227,8 +238,9 @@ func (c *distributedServiceClient) Coordinator(ctx context.Context, in *Peer, op
 // for forward compatibility
 type DistributedServiceServer interface {
 	// bully algorithm
-	Election(context.Context, *Peer) (*Acknowledge, error)
-	Coordinator(context.Context, *Peer) (*Acknowledge, error)
+	Election(context.Context, *Peer) (*Empty, error)
+	Coordinator(context.Context, *Peer) (*Empty, error)
+	Ping(context.Context, *Empty) (*Empty, error)
 	mustEmbedUnimplementedDistributedServiceServer()
 }
 
@@ -236,11 +248,14 @@ type DistributedServiceServer interface {
 type UnimplementedDistributedServiceServer struct {
 }
 
-func (UnimplementedDistributedServiceServer) Election(context.Context, *Peer) (*Acknowledge, error) {
+func (UnimplementedDistributedServiceServer) Election(context.Context, *Peer) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Election not implemented")
 }
-func (UnimplementedDistributedServiceServer) Coordinator(context.Context, *Peer) (*Acknowledge, error) {
+func (UnimplementedDistributedServiceServer) Coordinator(context.Context, *Peer) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Coordinator not implemented")
+}
+func (UnimplementedDistributedServiceServer) Ping(context.Context, *Empty) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
 }
 func (UnimplementedDistributedServiceServer) mustEmbedUnimplementedDistributedServiceServer() {}
 
@@ -291,6 +306,24 @@ func _DistributedService_Coordinator_Handler(srv interface{}, ctx context.Contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DistributedService_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DistributedServiceServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DistributedService_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DistributedServiceServer).Ping(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DistributedService_ServiceDesc is the grpc.ServiceDesc for DistributedService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -305,6 +338,10 @@ var DistributedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Coordinator",
 			Handler:    _DistributedService_Coordinator_Handler,
+		},
+		{
+			MethodName: "Ping",
+			Handler:    _DistributedService_Ping_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
