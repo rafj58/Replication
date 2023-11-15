@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/csv"
 	"flag"
 	"fmt"
@@ -16,10 +17,6 @@ import (
 	proto "Replication/grpc"
 )
 
-// link for Ricart & Agrawala algorithm https://www.geeksforgeeks.org/ricart-agrawala-algorithm-in-mutual-exclusion-in-distributed-system/
-// we need only the port where we receive messages
-// output port is decided automatically randomly by operating system
-
 type DServer struct {
 	proto.UnimplementedAuctionServiceServer
 	proto.UnimplementedDistributedServiceServer
@@ -28,34 +25,23 @@ type DServer struct {
 	port    int
 }
 
-// peer states
-const (
-	Released int = 0
-	Wanted       = 1
-	Held         = 2
-)
-
 var (
 	my_row   = flag.Int("row", 1, "Indicate the row of parameter file for this peer") // set with "-row <port>" in terminal
 	name     = flag.String("name", "peer", "name of the peer")
-	confFile = "../confFile.csv"
-	// default values for address and port
-	my_address = "127.0.0.1"
-	my_port    = 50050
-	// store tcp connection to others peers
-	peers = make(map[string]proto.UnimplementedDistributedServiceServer)
-	// state of the distributed mutex
-	state = Released
-	// lamport time of this peers request
-	myRequestTime = 0
-	// wait for listen before try to connect to other peers
+	confFile = "confFile.csv"
+	// store tcp connection to others peers of the distributed server
+	peers = make(map[string]proto.DistributedServiceClient)
+	// wait for listen to be open
 	wg sync.WaitGroup
+	// master info
+	masterAddr string
+	masterPort int
 )
 
 func main() {
 	flag.Parse()
 
-	// read from confFile.txt and set the peer values
+	// read from confFile.csv and prepare TCP connections
 	csvFile, err := os.Open(confFile)
 	if err != nil {
 		fmt.Printf("Error while opening CSV file: %v\n", err)
@@ -70,21 +56,28 @@ func main() {
 		return
 	}
 
+	dserver := &DServer{}
 	found := false
 	for index, row := range rows {
+		// retrive data from csv
+		peerAddress := row[0]
+		peerPort, _ := strconv.Atoi(row[1])
+		peerRef := row[0] + ":" + row[1]
+
 		if index == *my_row {
-			fmt.Printf("Your settings are : %s address, %s port\n", row[0], row[1])
-			my_address = row[0]
-			my_port, _ = strconv.Atoi(row[1])
+			fmt.Printf("Your settings are : %s address, %d port\n", peerAddress, peerPort)
+			dserver = &DServer{
+				name:    *name,
+				address: peerAddress,
+				port:    peerPort,
+			}
 			found = true
-			break
+		} else {
+			// retrieve connection
+			connection := connectToPeer(peerAddress, peerPort)
+			// add to map
+			peers[peerRef] = connection
 		}
-		dserver := &DServer{
-			name:    *name,
-			address: my_address,
-			port:    my_port,
-		}
-		connectToNode(dserver)
 	}
 
 	if !found {
@@ -99,78 +92,64 @@ func main() {
 	go StartListen(dserver)
 
 	wg.Wait()
-	// Preparate tcp connection to the others client
-	connectToOthersPeer(dserver)
 
 	// user interface menu
-	doSomething()
+	chooseMaster()
 }
 
 func StartListen(dserver *DServer) {
 	// Create a new grpc server
 	grpcDServer := grpc.NewServer()
 
-	increaseTime()
 	// Make the peer listen at the given port (convert int port to string)
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%s", dserver.address, strconv.Itoa(dserver.port)))
 
 	if err != nil {
 		log.Fatalf("Could not create the peer %v", err)
 	}
-	log.Printf("Lamport %d: Started peer receiving at address: %s and at port: %d\n", lamport_time, dserver.address, dserver.port)
+	log.Printf("Started peer receiving at address: %s and at port: %d\n", dserver.address, dserver.port)
 	wg.Done()
 
-	// Register the grpc service
-	increaseTime()
+	// Register the grpc services
 	proto.RegisterDistributedServiceServer(grpcDServer, dserver)
-	serveError := grpcDServer.Serve(listener)
+	proto.RegisterAuctionServiceServer(grpcDServer, dserver)
 
+	serveError := grpcDServer.Serve(listener)
 	if serveError != nil {
 		log.Fatalf("Could not serve listener")
 	}
-	log.Printf("Lamport %d: Started gRPC service", lamport_time)
-
+	log.Printf("Started gRPC service")
 }
 
-// Connect to others peer
-func connectToNode(dserver *DServer) {
-	// read csv file
-	file, err := os.Open(confFile)
-	if err != nil {
-		log.Fatalf("Failed to open configuration file: %v", err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	rows, err := reader.ReadAll()
-	if err != nil {
-		log.Fatalf("Failed to read file data: %v", err)
-	}
-
-	// try to connect to other peers
-	for index, row := range rows {
-		if len(row) < 2 || (index == *my_row) {
-			// ignore corrupted rows and me
-			continue
-		}
-		peerAddress := row[0]
-		peerPort, _ := strconv.Atoi(row[1])
-		peerRef := row[0] + ":" + row[1]
-		// retrieve connection
-		connection := connectToPeer(peerAddress, peerPort)
-		// add to map
-		peers[peerRef] = connection
-	}
-}
-
+// Connect to other peer
 func connectToPeer(address string, port int) proto.DistributedServiceClient {
-	// Dial doesn't check if the peer at that address:host is effectivly on (simply prepare TCP connection)
-	increaseTime()
+	// Dial simply prepare TCP connection
 	conn, err := grpc.Dial(address+":"+strconv.Itoa(port), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Printf("Lamport %d: Could not connect to peer %s at port %d", lamport_time, address, port)
+		log.Printf("Could not connect to peer %s at port %d", address, port)
 	} else {
-		log.Printf("Lamport %d: Created TCP connection to the %s address at port %d\n", lamport_time, address, port)
+		log.Printf("Created TCP connection to the %s address at port %d\n", address, port)
 	}
 	return proto.NewDistributedServiceClient(conn)
+}
+
+// BUlly algorithm to choose the master
+func chooseMaster() {
+
+}
+
+// Published services
+func (ds *DServer) AskForMaster(ctx context.Context, in *proto.Empty) (*proto.Master, error) {
+	// return the current master
+	return &proto.Master{
+		Address: masterAddr,
+		Port:    int32(masterPort)}, nil
+}
+
+func (ds *DServer) Bid(ctx context.Context, in *proto.Amount) (*proto.Acknowledge, error) {
+	// TO DO
+}
+
+func (ds *DServer) Result(ctx context.Context, in *proto.Empty) (*proto.Outcome, error) {
+	// TO DO
 }
