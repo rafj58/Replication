@@ -109,7 +109,6 @@ func main() {
 
 	for {
 		var text string
-		log.Printf("Insert 'exit' to quit\n")
 		fmt.Scanln(&text)
 
 		if text == "exit" {
@@ -198,13 +197,12 @@ func (ds *DServer) Election(ctx context.Context, in *proto.Peer) (*proto.Empty, 
 func (ds *DServer) Coordinator(ctx context.Context, in *proto.Peer) (*proto.Empty, error) {
 	select {
 	case coordination_msg <- true:
-		break
+	default:
+		log.Printf("Peer [%s:%d, %d] is the new coordinator.\n", in.Address, in.Port, in.Id)
+		masterAddr = in.Address
+		masterPort = int(in.Port)
+		masterId = int(in.Id)
 	}
-
-	log.Printf("Peer [%s:%d, %d] is the new coordinator.\n", in.Address, in.Port, in.Id)
-	masterAddr = in.Address
-	masterPort = int(in.Port)
-	masterId = int(in.Id)
 
 	return &proto.Empty{}, nil
 }
@@ -219,12 +217,12 @@ func iAmMaster(ds *DServer) bool {
 }
 
 func findMaster(ds *DServer) {
-
 	me := &proto.Peer{
 		Address: ds.address,
 		Port:    int32(ds.port),
 		Id:      int32(ds.id),
 	}
+
 	if !sendElectionToBigger(ds, me) {
 		// i'am the master
 		masterAddr = ds.address
