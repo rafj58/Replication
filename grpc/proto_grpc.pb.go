@@ -29,7 +29,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AuctionServiceClient interface {
 	Bid(ctx context.Context, in *Amount, opts ...grpc.CallOption) (*Empty, error)
-	Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Outcome, error)
+	Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Auction, error)
 	AskForMaster(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Peer, error)
 }
 
@@ -50,8 +50,8 @@ func (c *auctionServiceClient) Bid(ctx context.Context, in *Amount, opts ...grpc
 	return out, nil
 }
 
-func (c *auctionServiceClient) Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Outcome, error) {
-	out := new(Outcome)
+func (c *auctionServiceClient) Result(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Auction, error) {
+	out := new(Auction)
 	err := c.cc.Invoke(ctx, AuctionService_Result_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -73,7 +73,7 @@ func (c *auctionServiceClient) AskForMaster(ctx context.Context, in *Empty, opts
 // for forward compatibility
 type AuctionServiceServer interface {
 	Bid(context.Context, *Amount) (*Empty, error)
-	Result(context.Context, *Empty) (*Outcome, error)
+	Result(context.Context, *Empty) (*Auction, error)
 	AskForMaster(context.Context, *Empty) (*Peer, error)
 	mustEmbedUnimplementedAuctionServiceServer()
 }
@@ -85,7 +85,7 @@ type UnimplementedAuctionServiceServer struct {
 func (UnimplementedAuctionServiceServer) Bid(context.Context, *Amount) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Bid not implemented")
 }
-func (UnimplementedAuctionServiceServer) Result(context.Context, *Empty) (*Outcome, error) {
+func (UnimplementedAuctionServiceServer) Result(context.Context, *Empty) (*Auction, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Result not implemented")
 }
 func (UnimplementedAuctionServiceServer) AskForMaster(context.Context, *Empty) (*Peer, error) {
@@ -183,19 +183,23 @@ var AuctionService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	DistributedService_Election_FullMethodName    = "/proto.DistributedService/Election"
-	DistributedService_Coordinator_FullMethodName = "/proto.DistributedService/Coordinator"
-	DistributedService_Ping_FullMethodName        = "/proto.DistributedService/Ping"
+	DistributedService_Election_FullMethodName       = "/proto.DistributedService/Election"
+	DistributedService_Coordinator_FullMethodName    = "/proto.DistributedService/Coordinator"
+	DistributedService_Ping_FullMethodName           = "/proto.DistributedService/Ping"
+	DistributedService_UpdateAuction_FullMethodName  = "/proto.DistributedService/UpdateAuction"
+	DistributedService_GetAuctionData_FullMethodName = "/proto.DistributedService/GetAuctionData"
 )
 
 // DistributedServiceClient is the client API for DistributedService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type DistributedServiceClient interface {
-	// bully algorithm
+	// bully algorithm and updates to peer
 	Election(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Empty, error)
 	Coordinator(ctx context.Context, in *Peer, opts ...grpc.CallOption) (*Empty, error)
 	Ping(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
+	UpdateAuction(ctx context.Context, in *Auction, opts ...grpc.CallOption) (*Empty, error)
+	GetAuctionData(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Auction, error)
 }
 
 type distributedServiceClient struct {
@@ -233,14 +237,34 @@ func (c *distributedServiceClient) Ping(ctx context.Context, in *Empty, opts ...
 	return out, nil
 }
 
+func (c *distributedServiceClient) UpdateAuction(ctx context.Context, in *Auction, opts ...grpc.CallOption) (*Empty, error) {
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, DistributedService_UpdateAuction_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *distributedServiceClient) GetAuctionData(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Auction, error) {
+	out := new(Auction)
+	err := c.cc.Invoke(ctx, DistributedService_GetAuctionData_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DistributedServiceServer is the server API for DistributedService service.
 // All implementations must embed UnimplementedDistributedServiceServer
 // for forward compatibility
 type DistributedServiceServer interface {
-	// bully algorithm
+	// bully algorithm and updates to peer
 	Election(context.Context, *Peer) (*Empty, error)
 	Coordinator(context.Context, *Peer) (*Empty, error)
 	Ping(context.Context, *Empty) (*Empty, error)
+	UpdateAuction(context.Context, *Auction) (*Empty, error)
+	GetAuctionData(context.Context, *Empty) (*Auction, error)
 	mustEmbedUnimplementedDistributedServiceServer()
 }
 
@@ -256,6 +280,12 @@ func (UnimplementedDistributedServiceServer) Coordinator(context.Context, *Peer)
 }
 func (UnimplementedDistributedServiceServer) Ping(context.Context, *Empty) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedDistributedServiceServer) UpdateAuction(context.Context, *Auction) (*Empty, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateAuction not implemented")
+}
+func (UnimplementedDistributedServiceServer) GetAuctionData(context.Context, *Empty) (*Auction, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAuctionData not implemented")
 }
 func (UnimplementedDistributedServiceServer) mustEmbedUnimplementedDistributedServiceServer() {}
 
@@ -324,6 +354,42 @@ func _DistributedService_Ping_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DistributedService_UpdateAuction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Auction)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DistributedServiceServer).UpdateAuction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DistributedService_UpdateAuction_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DistributedServiceServer).UpdateAuction(ctx, req.(*Auction))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DistributedService_GetAuctionData_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DistributedServiceServer).GetAuctionData(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DistributedService_GetAuctionData_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DistributedServiceServer).GetAuctionData(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DistributedService_ServiceDesc is the grpc.ServiceDesc for DistributedService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -342,6 +408,14 @@ var DistributedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ping",
 			Handler:    _DistributedService_Ping_Handler,
+		},
+		{
+			MethodName: "UpdateAuction",
+			Handler:    _DistributedService_UpdateAuction_Handler,
+		},
+		{
+			MethodName: "GetAuctionData",
+			Handler:    _DistributedService_GetAuctionData_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

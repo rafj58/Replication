@@ -14,7 +14,7 @@ message Amount {
     int32 amount = 1;
 }
 
-message Outcome {
+message Auction {
     int32 highest = 1;
     bool closed = 2;
 }
@@ -23,14 +23,16 @@ message Empty{}
 
 service AuctionService {
     rpc Bid (Amount) returns (Empty);
-    rpc Result (Empty) returns (Outcome);
+    rpc Result (Empty) returns (Auction);
     rpc AskForMaster (Empty) returns (Peer);
 }
 
 service DistributedService {
-    // bully algorithm
+    // bully algorithm and updates to peer
     rpc Election(Peer) returns (Empty);
     rpc Coordinator(Peer) returns (Empty);
     rpc Ping(Empty) returns (Empty);
+    rpc UpdateAuction(Auction) returns (Empty);
+    rpc GetAuctionData(Empty) returns (Auction);
 }
     
