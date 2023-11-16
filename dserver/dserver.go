@@ -27,6 +27,7 @@ type DServer struct {
 	address string
 	port    int
 	id      int
+	mutex   sync.Mutex
 }
 
 var (
@@ -42,7 +43,7 @@ var (
 	masterPort int
 	masterId   int
 	// notifies receipt of a coordination message
-	coordination_msg chan bool
+	coordination_msg bool
 )
 
 func main() {
@@ -128,11 +129,12 @@ func StartListen(dserver *DServer) {
 		log.Fatalf("Could not create the peer %v", err)
 	}
 	log.Printf("Started peer receiving at address: %s and at port: %d\n", dserver.address, dserver.port)
-	wg.Done()
 
 	// register the grpc services
 	proto.RegisterDistributedServiceServer(grpcDServer, dserver)
 	proto.RegisterAuctionServiceServer(grpcDServer, dserver)
+
+	wg.Done()
 
 	serveError := grpcDServer.Serve(listener)
 	if serveError != nil {
@@ -195,15 +197,14 @@ func (ds *DServer) Election(ctx context.Context, in *proto.Peer) (*proto.Empty, 
 }
 
 func (ds *DServer) Coordinator(ctx context.Context, in *proto.Peer) (*proto.Empty, error) {
-	select {
-	case coordination_msg <- true:
-	default:
-		log.Printf("Peer [%s:%d, %d] is the new coordinator.\n", in.Address, in.Port, in.Id)
-		masterAddr = in.Address
-		masterPort = int(in.Port)
-		masterId = int(in.Id)
-	}
 
+	log.Printf("Peer [%s:%d, %d] is the master.\n", in.Address, in.Port, in.Id)
+	coordination_msg = true
+	ds.mutex.Lock()
+	masterAddr = in.Address
+	masterPort = int(in.Port)
+	masterId = int(in.Id)
+	ds.mutex.Unlock()
 	return &proto.Empty{}, nil
 }
 
@@ -222,30 +223,29 @@ func findMaster(ds *DServer) {
 		Port:    int32(ds.port),
 		Id:      int32(ds.id),
 	}
+	coordination_msg = false
 
 	if !sendElectionToBigger(ds, me) {
 		// i'am the master
+		ds.mutex.Lock()
 		masterAddr = ds.address
 		masterPort = ds.port
 		masterId = ds.id
+		ds.mutex.Unlock()
 		log.Printf("I'am the current master!\n")
 		sendCoordinatorToLower(ds, me)
 	} else {
 		// wait for coordination message
-		timer := time.NewTimer(5 * time.Second)
-		select {
-		case <-timer.C:
-			log.Printf("No one of the bigger id peer send a coordination msg")
+		time.Sleep(5 * time.Second)
+		if !coordination_msg {
 			// retry
+			log.Printf("No one of bigger id send a coordination message\n")
 			findMaster(ds)
-			break
-		case <-coordination_msg:
-			break
 		}
 	}
 }
 
-// election message to bigger id peers (1 second to reply)
+// election message to bigger id peers
 func sendElectionToBigger(ds *DServer, msg *proto.Peer) bool {
 	found_bigger_active := false
 
@@ -253,11 +253,10 @@ func sendElectionToBigger(ds *DServer, msg *proto.Peer) bool {
 		if index > ds.id {
 			_, err := conn.Election(context.Background(), msg)
 			if err != nil {
-				//log.Printf("Failed to send election message to peer id %d", index)
 				// continue with other peers
 				continue
 			}
-			log.Printf("Sent selection message to peer id %d", index)
+			//log.Printf("Sent selection message to peer id %d", index)
 			found_bigger_active = true
 		}
 	}
@@ -269,26 +268,33 @@ func sendCoordinatorToLower(ds *DServer, msg *proto.Peer) {
 		if index < ds.id {
 			_, err := conn.Coordinator(context.Background(), msg)
 			if err != nil {
-				//log.Printf("Failed to send coordinator message to peer id %d", index)
 				// continue with other peers
 				continue
 			}
-			log.Printf("Sent coordinator message to peer id %d", index)
+			//log.Printf("Sent coordinator message to peer id %d", index)
 		}
 	}
 }
 
 /* --- functions to monitor master status ---*/
 func checkMaster(ds *DServer) {
+	strike := 0
 	for {
 		select {
 		case <-time.NewTicker(5 * time.Second).C:
 			if !iAmMaster(ds) {
-				log.Print("Check if the master is available")
 				if !pingMaster() {
-					// master is not available
+					// master doesn't reply to ping
+					strike++
+					log.Printf("%d ping lost", strike)
+				} else {
+					strike = 0
+				}
+				if strike > 2 {
+					// 3 strike in a row, master is no more available
 					log.Printf("Master is not available")
 					findMaster(ds)
+					strike = 0
 				}
 			}
 		}
