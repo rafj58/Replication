@@ -188,7 +188,10 @@ func (ds *DServer) Bid(ctx context.Context, in *proto.Amount) (*proto.Empty, err
 		return nil, status.Errorf(codes.PermissionDenied, "I'am not the master")
 	} else {
 		if !auction_closed {
-			auction_amount += int(in.Amount)
+			if auction_amount > int(in.Amount) { // offer is smaller than current amount
+				return nil, status.Errorf(codes.InvalidArgument, "The amount of the bid is too small")
+			}
+			auction_amount = int(in.Amount)
 			log.Printf("Current highest BID is %d", auction_amount)
 			updatePeers()
 			return &proto.Empty{}, nil
@@ -237,7 +240,7 @@ func (ds *DServer) UpdateAuction(ctx context.Context, in *proto.Auction) (*proto
 		log.Print("Something went wrong.. i receive the update auction but i'm the master!")
 		return nil, status.Errorf(codes.PermissionDenied, "You can't update the master!")
 	}
-	auction_amount += int(in.Highest)
+	auction_amount = int(in.Highest)
 	auction_closed = in.Closed
 	return &proto.Empty{}, nil
 }
