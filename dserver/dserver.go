@@ -1,5 +1,19 @@
 package main
 
+/*   README
+The part about the comunication between peers should be OK, be careful to modify it
+After 3 strike on ping, new master is elected
+Look and modify eventually (they also should be ok) only AuctionService methods (Bid, Result and AskForMaster)
+If you have some question write me on Messenger
+On client side we need only to enter amount for a bid and call the remote service (look for different time of error)
+You can manage them with:
+answer, err := server.Bid(context.Background(), &proto.Amount{...})
+if err != nil {
+	log.Println(err)
+	return
+}
+*/
+
 import (
 	"context"
 	"encoding/csv"
@@ -107,13 +121,13 @@ func main() {
 	wg.Wait()
 
 	// before update the new master i need to update the values of the auction
-	// if i'm the new master i will loose this value instead
+	// if i will be the new master i will loose this value if i don't do it
 	updateActionValues()
 
 	// update the master
 	updateMaster(dserver)
 
-	// check if the master is available
+	// go routine to check if the master is available
 	go checkMaster(dserver)
 
 	for {
@@ -246,10 +260,13 @@ func (ds *DServer) UpdateAuction(ctx context.Context, in *proto.Auction) (*proto
 }
 
 func (ds *DServer) GetAuctionData(ctx context.Context, in *proto.Empty) (*proto.Auction, error) {
-	return &proto.Auction{
-		Highest: int32(auction_amount),
-		Closed:  auction_closed,
-	}, nil
+	if iAmMaster(ds) {
+		return &proto.Auction{
+			Highest: int32(auction_amount),
+			Closed:  auction_closed,
+		}, nil
+	}
+	return nil, status.Errorf(codes.Aborted, "Ask to the master for updatest value!")
 }
 
 /*--- Function to implement BULLY algorithm ---*/
@@ -289,12 +306,9 @@ func sendElectionToBigger(ds *DServer, msg *proto.Peer) bool {
 	for index, conn := range peers {
 		if index > ds.id {
 			_, err := conn.Election(context.Background(), msg)
-			if err != nil {
-				// continue with other peers
-				continue
+			if err == nil {
+				found_bigger_active = true
 			}
-			//log.Printf("Sent selection message to peer id %d", index)
-			found_bigger_active = true
 		}
 	}
 	return found_bigger_active
@@ -304,12 +318,7 @@ func sendElectionToBigger(ds *DServer, msg *proto.Peer) bool {
 func sendCoordinatorToLower(ds *DServer, msg *proto.Peer) {
 	for index, conn := range peers {
 		if index < ds.id {
-			_, err := conn.Coordinator(context.Background(), msg)
-			if err != nil {
-				// continue with other peers
-				continue
-			}
-			//log.Printf("Sent coordinator message to peer id %d", index)
+			conn.Coordinator(context.Background(), msg)
 		}
 	}
 }
@@ -357,9 +366,9 @@ func updateActionValues() {
 	for _, conn := range peers {
 		msg, err := conn.GetAuctionData(context.Background(), &proto.Empty{})
 		if err != nil {
-			log.Printf("Impossible to update values on this peer")
 			continue
 		}
+		log.Printf("Received auction data from master, amount is %d", msg.Highest)
 		auction_amount = int(msg.Highest)
 		auction_closed = msg.Closed
 		break
@@ -370,13 +379,9 @@ func updateActionValues() {
 func updatePeers() {
 	for index, conn := range peers {
 		if index != masterId {
-			_, err := conn.UpdateAuction(context.Background(), &proto.Auction{
+			conn.UpdateAuction(context.Background(), &proto.Auction{
 				Highest: int32(auction_amount),
 				Closed:  auction_closed})
-			if err != nil {
-				log.Printf("Impossible to update values on this peer")
-				continue
-			}
 		}
 	}
 }
