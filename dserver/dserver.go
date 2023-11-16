@@ -44,6 +44,8 @@ var (
 	masterId   int
 	// notifies receipt of a coordination message
 	coordination_msg bool
+	auction_closed   = false
+	auction_amount   = 0
 )
 
 func main() {
@@ -104,8 +106,14 @@ func main() {
 
 	wg.Wait()
 
-	findMaster(dserver)
+	// before update the new master i need to update the values of the auction
+	// if i'm the new master i will loose this value instead
+	updateActionValues()
 
+	// update the master
+	updateMaster(dserver)
+
+	// check if the master is available
 	go checkMaster(dserver)
 
 	for {
@@ -114,6 +122,16 @@ func main() {
 
 		if text == "exit" {
 			break
+		}
+
+		// only the master can close the auction
+		if text == "close" {
+			if iAmMaster(dserver) {
+				auction_closed = true
+				updatePeers()
+			} else {
+				log.Print("Only the master can close the auction")
+			}
 		}
 	}
 }
@@ -140,7 +158,6 @@ func StartListen(dserver *DServer) {
 	if serveError != nil {
 		log.Fatalf("Could not serve listener")
 	}
-	log.Printf("Started gRPC service")
 }
 
 func connectToPeer(address string, port int) proto.DistributedServiceClient {
@@ -154,9 +171,12 @@ func connectToPeer(address string, port int) proto.DistributedServiceClient {
 	return proto.NewDistributedServiceClient(conn)
 }
 
-/*----  Published services for client  TO DO----*/
+/*----  Published services for client  ----*/
+
 func (ds *DServer) AskForMaster(ctx context.Context, in *proto.Empty) (*proto.Peer, error) {
 	// return the current master
+	ds.mutex.Lock()
+	defer ds.mutex.Unlock()
 	return &proto.Peer{
 		Address: masterAddr,
 		Port:    int32(masterPort),
@@ -165,39 +185,39 @@ func (ds *DServer) AskForMaster(ctx context.Context, in *proto.Empty) (*proto.Pe
 
 func (ds *DServer) Bid(ctx context.Context, in *proto.Amount) (*proto.Empty, error) {
 	if !iAmMaster(ds) {
-		return nil, status.Errorf(codes.FailedPrecondition, "I'am not the master")
+		return nil, status.Errorf(codes.PermissionDenied, "I'am not the master")
+	} else {
+		if !auction_closed {
+			auction_amount += int(in.Amount)
+			log.Printf("Current highest BID is %d", auction_amount)
+			updatePeers()
+			return &proto.Empty{}, nil
+		}
+		return nil, status.Errorf(codes.DeadlineExceeded, "The auction is already closed")
 	}
-	// i'am the master
-	// TO DO
-	return &proto.Empty{}, nil
 }
 
-func (ds *DServer) Result(ctx context.Context, in *proto.Empty) (*proto.Outcome, error) {
+func (ds *DServer) Result(ctx context.Context, in *proto.Empty) (*proto.Auction, error) {
 	if !iAmMaster(ds) {
-		return nil, status.Errorf(codes.FailedPrecondition, "I'am not the master")
+		return nil, status.Errorf(codes.PermissionDenied, "I'am not the master")
+	} else {
+		return &proto.Auction{Highest: int32(auction_amount), Closed: auction_closed}, nil
 	}
-	// i'am the master
-	// TO DO
-	return &proto.Outcome{
-		Highest: 100,
-		Closed:  false}, nil
 }
 
 /*------ Published services for other peers ----*/
+
 func (ds *DServer) Election(ctx context.Context, in *proto.Peer) (*proto.Empty, error) {
 	if ds.id < int(in.Id) {
-		return nil, status.Errorf(codes.FailedPrecondition, "Peer %d has a lower ID than peer %d", ds.id, in.Id)
+		return nil, status.Errorf(codes.InvalidArgument, "Peer %d has a lower ID than peer %d", ds.id, in.Id)
 	}
-
 	log.Printf("Peer [%s:%d, %d] received election message from [%s:%d, %d]\n", ds.address, ds.port, ds.id, in.Address, in.Port, in.Id)
-
 	// send election to bigger ID than me and reply with ack
-	findMaster(ds)
+	updateMaster(ds)
 	return &proto.Empty{}, nil
 }
 
 func (ds *DServer) Coordinator(ctx context.Context, in *proto.Peer) (*proto.Empty, error) {
-
 	log.Printf("Peer [%s:%d, %d] is the master.\n", in.Address, in.Port, in.Id)
 	coordination_msg = true
 	ds.mutex.Lock()
@@ -212,12 +232,26 @@ func (ds *DServer) Ping(ctx context.Context, in *proto.Empty) (*proto.Empty, err
 	return &proto.Empty{}, nil
 }
 
-/*--- Function to make code more readable and manage the master ---*/
-func iAmMaster(ds *DServer) bool {
-	return (ds.address == masterAddr && ds.port == masterPort && ds.id == masterId)
+func (ds *DServer) UpdateAuction(ctx context.Context, in *proto.Auction) (*proto.Empty, error) {
+	if iAmMaster(ds) {
+		log.Print("Something went wrong.. i receive the update auction but i'm the master!")
+		return nil, status.Errorf(codes.PermissionDenied, "You can't update the master!")
+	}
+	auction_amount += int(in.Highest)
+	auction_closed = in.Closed
+	return &proto.Empty{}, nil
 }
 
-func findMaster(ds *DServer) {
+func (ds *DServer) GetAuctionData(ctx context.Context, in *proto.Empty) (*proto.Auction, error) {
+	return &proto.Auction{
+		Highest: int32(auction_amount),
+		Closed:  auction_closed,
+	}, nil
+}
+
+/*--- Function to implement BULLY algorithm ---*/
+
+func updateMaster(ds *DServer) {
 	me := &proto.Peer{
 		Address: ds.address,
 		Port:    int32(ds.port),
@@ -240,7 +274,7 @@ func findMaster(ds *DServer) {
 		if !coordination_msg {
 			// retry
 			log.Printf("No one of bigger id send a coordination message\n")
-			findMaster(ds)
+			updateMaster(ds)
 		}
 	}
 }
@@ -263,6 +297,7 @@ func sendElectionToBigger(ds *DServer, msg *proto.Peer) bool {
 	return found_bigger_active
 }
 
+// coordination to lower if i'm the master
 func sendCoordinatorToLower(ds *DServer, msg *proto.Peer) {
 	for index, conn := range peers {
 		if index < ds.id {
@@ -277,6 +312,11 @@ func sendCoordinatorToLower(ds *DServer, msg *proto.Peer) {
 }
 
 /* --- functions to monitor master status ---*/
+
+func iAmMaster(ds *DServer) bool {
+	return (ds.address == masterAddr && ds.port == masterPort && ds.id == masterId)
+}
+
 func checkMaster(ds *DServer) {
 	strike := 0
 	for {
@@ -293,7 +333,7 @@ func checkMaster(ds *DServer) {
 				if strike > 2 {
 					// 3 strike in a row, master is no more available
 					log.Printf("Master is not available")
-					findMaster(ds)
+					updateMaster(ds)
 					strike = 0
 				}
 			}
@@ -307,4 +347,33 @@ func pingMaster() bool {
 		return false
 	}
 	return true
+}
+
+// retrive current values of auction
+func updateActionValues() {
+	for _, conn := range peers {
+		msg, err := conn.GetAuctionData(context.Background(), &proto.Empty{})
+		if err != nil {
+			log.Printf("Impossible to update values on this peer")
+			continue
+		}
+		auction_amount = int(msg.Highest)
+		auction_closed = msg.Closed
+		break
+	}
+}
+
+// update others peers in server with auction data
+func updatePeers() {
+	for index, conn := range peers {
+		if index != masterId {
+			_, err := conn.UpdateAuction(context.Background(), &proto.Auction{
+				Highest: int32(auction_amount),
+				Closed:  auction_closed})
+			if err != nil {
+				log.Printf("Impossible to update values on this peer")
+				continue
+			}
+		}
+	}
 }
