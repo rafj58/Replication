@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/csv"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"strconv"
@@ -14,33 +15,27 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-type Client struct {
-	name string
-}
-
-var (
-	clientName = flag.String("cName", "Anonymous", "client name")
-)
-
 const (
 	configFilePath = "../confFile.csv"
+)
+
+var (
+	masterAddr  string
+	masterPort  int32
+	serverNodes [][]string
 )
 
 func main() {
 	// Parse the flags to get the port for the client
 	flag.Parse()
 
-	// Create a client
-	// client := &Client{
-	// 	name: *clientName,
-	// }
-
 	// Read Server addresses and ports from file
-	addrPortIds := GetServerAddrPortIdFromFile()
+	serverNodes := GetServerAddrPortIdFromFile()
 
 	// Get master and connect to it
-	AskAndConnectToMaster(addrPortIds)
+	auctionService := AskAndConnectToMaster(serverNodes)
 
+	CommunicateWithService(auctionService)
 }
 
 func GetServerAddrPortIdFromFile() [][]string {
@@ -78,6 +73,8 @@ func AskAndConnectToMaster(addrPortIds [][]string) proto.AuctionServiceClient {
 		if err != nil {
 			log.Fatalf("Attempt to communicate with master node at %s:%d resulted in error: %s", masterNode.GetAddress(), masterNode.GetPort(), err)
 		}
+		masterAddr = masterNode.GetAddress()
+		masterPort = masterNode.GetPort()
 		break
 	}
 	if serviceClient == nil {
@@ -95,4 +92,57 @@ func ConnectToServerNode(address string, port string) (proto.AuctionServiceClien
 		log.Printf("Connected to servernode at %s:%s", address, port)
 	}
 	return proto.NewAuctionServiceClient(conn), err
+}
+
+func CommunicateWithService(service proto.AuctionServiceClient) {
+	command := ""
+
+	for {
+		log.Printf("Type 'bid' followed by bid-amount to bid in the auction or 'exit' to exit program")
+		fmt.Scan(&command)
+
+		if command == "bid" {
+			amountstr := ""
+			fmt.Scan(&amountstr)
+			amount, err := strconv.Atoi(amountstr)
+
+			if err != nil {
+				log.Printf("Could not convert string to int. Error: %s", err.Error())
+				continue
+			}
+
+			bid := proto.Amount{
+				Amount: int32(amount),
+			}
+			_, err = service.Bid(context.Background(), &bid)
+
+			if err != nil {
+				log.Printf("Communication with server at %s:%d resulted in error: %s", masterAddr, masterPort, err.Error())
+				AskAndConnectToMaster(serverNodes)
+				continue
+			}
+
+			log.Printf("Bidded with amount : %s", strconv.Itoa(amount))
+
+		} else if command == "result" {
+			response, err := service.Result(context.Background(), &proto.Empty{})
+			if err != nil {
+				log.Printf("Communication with server at %s:%d resulted in error: %s", masterAddr, masterPort, err.Error())
+				AskAndConnectToMaster(serverNodes)
+				continue
+			}
+
+			if response.Closed {
+				log.Printf("The highest bid is %d and the auction has concluded", response.GetHighest())
+			} else {
+				log.Printf("The highest bid is %d and the auction is still ongoing", response.GetHighest())
+			}
+
+		} else if command == "exit" {
+			log.Printf("Exiting...")
+			return
+		} else {
+			log.Printf("Invalid command entered: %s", command)
+		}
+	}
 }
