@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/csv"
 	"flag"
 	"log"
+	"os"
 	"strconv"
 
 	proto "Replication/grpc"
@@ -17,11 +19,11 @@ type Client struct {
 }
 
 var (
-	firstAddr  = flag.String("sAddr", "localhost", "server address") // retrive first line from conf File
-	firstPort  = flag.Int("sPort", 1000, "server port")              // as before
-	masterAddr = flag.String("sAddr", "localhost", "server address")
-	masterPort = flag.Int("sPort", 1000, "server port")
 	clientName = flag.String("cName", "Anonymous", "client name")
+)
+
+const (
+	configFilePath = "../confFile.csv"
 )
 
 func main() {
@@ -29,56 +31,68 @@ func main() {
 	flag.Parse()
 
 	// Create a client
-	client := &Client{
-		name: *clientName,
-	}
+	// client := &Client{
+	// 	name: *clientName,
+	// }
 
-	// Connect
-	connect(client)
+	// Read Server addresses and ports from file
+	addrPortIds := GetServerAddrPortIdFromFile()
+
+	// Get master and connect to it
+	AskAndConnectToMaster(addrPortIds)
+
 }
 
-func connect(client *Client) {
-	// ask for the master
-	first := connectToFirst()
-	// update masterAddr and masterPort
-
-	stream, err := first.AskForMaster(context.Background(), &proto.Empty{})
+func GetServerAddrPortIdFromFile() [][]string {
+	file, err := os.Open(configFilePath)
 	if err != nil {
-		log.Println(err)
-		return
+		log.Fatalf(err.Error())
 	} else {
-		log.Printf("The master is: %s:%d", stream.Address, stream.Port)
+		log.Printf("Successfully opened config file for reading")
 	}
-	*masterAddr = stream.Address
-	*masterPort = int(stream.Port)
-
-	// connect to the master
-	master := connectToMaster()
-	// make a bid, it is a test
-	master.Bid(context.Background(), &proto.Amount{
-		Amount: 10,
-	})
-	// to do ...
+	reader := csv.NewReader(file)
+	addrPortIds, err := reader.ReadAll()
+	if err != nil {
+		log.Fatalf(err.Error())
+	} else {
+		log.Printf("Succesfully read config file")
+	}
+	return addrPortIds
 }
 
-func connectToMaster() proto.AuctionServiceClient {
+func AskAndConnectToMaster(addrPortIds [][]string) proto.AuctionServiceClient {
+	var serviceClient proto.AuctionServiceClient
+	for _, addrPortId := range addrPortIds {
+		service, err := ConnectToServerNode(addrPortId[0], addrPortId[1])
+		if err != nil {
+			continue
+		}
+		masterNode, err := service.AskForMaster(context.Background(), &proto.Empty{})
+		if err != nil {
+			log.Printf("Attempt to communicate with server node at %s:%s resulted in error: %s", addrPortId[0], addrPortId[1], err)
+			continue
+		} else {
+			log.Printf("Successfully recieved address and port for master node from node at %s:%s", addrPortId[0], addrPortId[1])
+		}
+		serviceClient, err = ConnectToServerNode(masterNode.GetAddress(), strconv.Itoa(int(masterNode.GetPort())))
+		if err != nil {
+			log.Fatalf("Attempt to communicate with master node at %s:%d resulted in error: %s", masterNode.GetAddress(), masterNode.GetPort(), err)
+		}
+		break
+	}
+	if serviceClient == nil {
+		log.Fatalf("Could not connect to any server node")
+	}
+	return serviceClient
+}
+
+func ConnectToServerNode(address string, port string) (proto.AuctionServiceClient, error) {
 	// Dial the server at the specified port.
-	conn, err := grpc.Dial(*masterAddr+":"+strconv.Itoa(*masterPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(address+":"+port, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		log.Fatalf("Could not connect to port %d", *masterPort)
+		log.Printf("Could not connect to servernode at %s:%s", address, port)
 	} else {
-		log.Printf("Connected to the master at port %d\n", *masterPort)
+		log.Printf("Connected to servernode at %s:%s", address, port)
 	}
-	return proto.NewAuctionServiceClient(conn)
-}
-
-func connectToFirst() proto.DistributedServiceClient {
-	// Dial the server at the specified port.
-	conn, err := grpc.Dial(*firstAddr+":"+strconv.Itoa(*firstPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		log.Fatalf("Could not connect to port %d", *firstPort)
-	} else {
-		log.Printf("Connected to the master at port %d\n", *firstPort)
-	}
-	return proto.NewDistributedServiceClient(conn)
+	return proto.NewAuctionServiceClient(conn), err
 }
