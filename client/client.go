@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/csv"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -26,9 +25,6 @@ var (
 )
 
 func main() {
-	// Parse the flags to get the port for the client
-	flag.Parse()
-
 	// Read Server addresses and ports from file
 	serverNodes := GetServerAddrPortIdFromFile()
 
