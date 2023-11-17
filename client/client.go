@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	proto "Replication/grpc"
 
@@ -113,6 +114,10 @@ func CommunicateWithService(service proto.AuctionServiceClient) {
 			_, err = service.Bid(context.Background(), &bid)
 
 			if err != nil {
+				if strings.Contains(err.Error(), "code = InvalidArgument") || strings.Contains(err.Error(), "code = DeadlineExceeded") {
+					log.Println(err.Error())
+					continue
+				}
 				log.Printf("Communication with server at %s:%d resulted in error: %s", masterAddr, masterPort, err.Error())
 				AskAndConnectToMaster(serverNodes)
 				continue
