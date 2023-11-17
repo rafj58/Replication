@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	configFilePath = "../confFile.csv"
+	configFilePath = "confFile.csv"
 )
 
 var (
