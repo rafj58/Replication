@@ -27,7 +27,7 @@ var (
 
 func main() {
 	// Read Server addresses and ports from file
-	serverNodes := GetServerAddrPortIdFromFile()
+	serverNodes = GetServerAddrPortIdFromFile()
 
 	// Get master and connect to it
 	auctionService := AskAndConnectToMaster(serverNodes)
@@ -57,18 +57,19 @@ func AskAndConnectToMaster(addrPortIds [][]string) proto.AuctionServiceClient {
 	for _, addrPortId := range addrPortIds {
 		service, err := ConnectToServerNode(addrPortId[0], addrPortId[1])
 		if err != nil {
+			// the peer is not available, ask for the master to the next one
 			continue
 		}
 		masterNode, err := service.AskForMaster(context.Background(), &proto.Empty{})
 		if err != nil {
-			log.Printf("Attempt to communicate with server node at %s:%s resulted in error: %s", addrPortId[0], addrPortId[1], err)
+			log.Printf("Impossible to communicate with server node at %s:%s", addrPortId[0], addrPortId[1])
 			continue
 		} else {
-			log.Printf("Successfully recieved address and port for master node from node at %s:%s", addrPortId[0], addrPortId[1])
+			log.Printf("Successfully recieved address and port of the master node from node at %s:%s", addrPortId[0], addrPortId[1])
 		}
 		serviceClient, err = ConnectToServerNode(masterNode.GetAddress(), strconv.Itoa(int(masterNode.GetPort())))
 		if err != nil {
-			log.Fatalf("Attempt to communicate with master node at %s:%d resulted in error: %s", masterNode.GetAddress(), masterNode.GetPort(), err)
+			log.Printf("Impossible to communicate with master node at %s:%d", masterNode.GetAddress(), masterNode.GetPort())
 		}
 		masterAddr = masterNode.GetAddress()
 		masterPort = masterNode.GetPort()
@@ -92,14 +93,16 @@ func ConnectToServerNode(address string, port string) (proto.AuctionServiceClien
 }
 
 func CommunicateWithService(service proto.AuctionServiceClient) {
-	command := ""
+	var command string
 
 	for {
-		log.Printf("Type 'bid' followed by bid-amount to bid in the auction or 'exit' to exit program")
+		log.Printf("Type 'bid' followed by bid-amount to bid in the auction, 'result' to see the current \n" +
+			"status of the auction or 'exit' to exit program")
 		fmt.Scan(&command)
 
-		if command == "bid" {
-			amountstr := ""
+		switch command {
+		case "bid":
+			var amountstr string
 			fmt.Scan(&amountstr)
 			amount, err := strconv.Atoi(amountstr)
 
@@ -118,14 +121,14 @@ func CommunicateWithService(service proto.AuctionServiceClient) {
 					log.Println(err.Error())
 					continue
 				}
-				log.Printf("Communication with server at %s:%d resulted in error: %s", masterAddr, masterPort, err.Error())
+				log.Printf("Communication with master server %s:%d failed, searching for the new one", masterAddr, masterPort)
 				AskAndConnectToMaster(serverNodes)
 				continue
 			}
 
 			log.Printf("Bidded with amount : %s", strconv.Itoa(amount))
 
-		} else if command == "result" {
+		case "result":
 			response, err := service.Result(context.Background(), &proto.Empty{})
 			if err != nil {
 				log.Printf("Communication with server at %s:%d resulted in error: %s", masterAddr, masterPort, err.Error())
@@ -139,10 +142,11 @@ func CommunicateWithService(service proto.AuctionServiceClient) {
 				log.Printf("The highest bid is %d and the auction is still ongoing", response.GetHighest())
 			}
 
-		} else if command == "exit" {
+		case "exit":
 			log.Printf("Exiting...")
 			return
-		} else {
+
+		default:
 			log.Printf("Invalid command entered: %s", command)
 		}
 	}
