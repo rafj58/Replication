@@ -65,7 +65,8 @@ func AskAndConnectToMaster(addrPortIds [][]string) proto.AuctionServiceClient {
 			log.Printf("Impossible to communicate with server node at %s:%s", addrPortId[0], addrPortId[1])
 			continue
 		} else {
-			log.Printf("Successfully recieved address and port of the master node from node at %s:%s", addrPortId[0], addrPortId[1])
+			log.Printf("Recieved address and port of the master node %s:%d from node at %s:%s",
+				masterNode.Address, masterNode.Port, addrPortId[0], addrPortId[1])
 		}
 		serviceClient, err = ConnectToServerNode(masterNode.GetAddress(), strconv.Itoa(int(masterNode.GetPort())))
 		if err != nil {
@@ -87,7 +88,7 @@ func ConnectToServerNode(address string, port string) (proto.AuctionServiceClien
 	if err != nil {
 		log.Printf("Could not connect to servernode at %s:%s", address, port)
 	} else {
-		log.Printf("Connected to servernode at %s:%s", address, port)
+		// log.Printf("Connected to servernode at %s:%s", address, port)
 	}
 	return proto.NewAuctionServiceClient(conn), err
 }
@@ -121,8 +122,12 @@ func CommunicateWithService(service proto.AuctionServiceClient) {
 					log.Println(err.Error())
 					continue
 				}
+				if strings.Contains(err.Error(), "code = PermissionDenied") {
+					log.Println(err.Error())
+				}
 				log.Printf("Communication with master server %s:%d failed, searching for the new one", masterAddr, masterPort)
-				AskAndConnectToMaster(serverNodes)
+				service = AskAndConnectToMaster(serverNodes)
+				log.Printf("Connection with the master reestablished, reinsert the command ")
 				continue
 			}
 
@@ -131,8 +136,12 @@ func CommunicateWithService(service proto.AuctionServiceClient) {
 		case "result":
 			response, err := service.Result(context.Background(), &proto.Empty{})
 			if err != nil {
-				log.Printf("Communication with server at %s:%d resulted in error: %s", masterAddr, masterPort, err.Error())
-				AskAndConnectToMaster(serverNodes)
+				if strings.Contains(err.Error(), "code = PermissionDenied") {
+					log.Println(err.Error())
+				}
+				log.Printf("Communication with master server %s:%d failed, searching for the new one", masterAddr, masterPort)
+				service = AskAndConnectToMaster(serverNodes)
+				log.Printf("Connection with the master reestablished, reinsert the command ")
 				continue
 			}
 

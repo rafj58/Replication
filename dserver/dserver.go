@@ -1,18 +1,6 @@
 package main
 
-/*   README
-The part about the comunication between peers should be OK, be careful to modify it
-After 3 strike on ping, new master is elected
-Look and modify eventually (they also should be ok) only AuctionService methods (Bid, Result and AskForMaster)
-If you have some question write me on Messenger
-On client side we need only to enter amount for a bid and call the remote service (look for different time of error)
-You can manage them with:
-answer, err := server.Bid(context.Background(), &proto.Amount{...})
-if err != nil {
-	log.Println(err)
-	return
-}
-*/
+// after 3 strike on ping (every 8 seconds), new master is elected
 
 import (
 	"context"
@@ -132,6 +120,7 @@ func main() {
 
 	for {
 		var text string
+		log.Print("Insert 'exit' to terminate peer or 'close' to finish the action: ")
 		fmt.Scanln(&text)
 
 		if text == "exit" {
@@ -254,6 +243,7 @@ func (ds *DServer) UpdateAuction(ctx context.Context, in *proto.Auction) (*proto
 		log.Print("Something went wrong.. i receive the update auction but i'm the master!")
 		return nil, status.Errorf(codes.PermissionDenied, "You can't update the master!")
 	}
+	log.Printf("Received new value for the action: %d amount, closed %t", in.Highest, in.Closed)
 	auction_amount = int(in.Highest)
 	auction_closed = in.Closed
 	return &proto.Empty{}, nil
@@ -286,8 +276,8 @@ func updateMaster(ds *DServer) {
 		masterPort = ds.port
 		masterId = ds.id
 		ds.mutex.Unlock()
-		log.Printf("I'am the current master!\n")
 		sendCoordinatorToLower(ds, me)
+		log.Printf("I'am the current master!\n")
 	} else {
 		// wait for coordination message
 		time.Sleep(5 * time.Second)
@@ -333,7 +323,7 @@ func checkMaster(ds *DServer) {
 	strike := 0
 	for {
 		select {
-		case <-time.NewTicker(5 * time.Second).C:
+		case <-time.NewTicker(8 * time.Second).C:
 			if !iAmMaster(ds) {
 				if !pingMaster() {
 					// master doesn't reply to ping
