@@ -25,11 +25,12 @@ import (
 type DServer struct {
 	proto.UnimplementedAuctionServiceServer
 	proto.UnimplementedDistributedServiceServer
-	name    string
-	address string
-	port    int
-	id      int
-	mutex   sync.Mutex
+	name          string
+	address       string
+	port          int
+	id            int
+	mutex         sync.Mutex
+	mutex_auction sync.Mutex
 }
 
 var (
@@ -190,6 +191,8 @@ func (ds *DServer) Bid(ctx context.Context, in *proto.Amount) (*proto.Empty, err
 	if !iAmMaster(ds) {
 		return nil, status.Errorf(codes.PermissionDenied, "I'am not the master")
 	} else {
+		ds.mutex_auction.Lock()
+		defer ds.mutex_auction.Unlock()
 		if !auction_closed {
 			if auction_amount > int(in.Amount) { // offer is smaller than current amount
 				return nil, status.Errorf(codes.InvalidArgument, "The amount of the bid is too small")
