@@ -36,7 +36,7 @@ type DServer struct {
 var (
 	my_row   = flag.Int("row", 1, "Indicate the row of parameter file for this peer") // set with "-row <port>" in terminal
 	name     = flag.String("name", "peer", "name of the peer")
-	confFile = "../confFile.csv"
+	confFile = "/confFile.csv"
 	// store  tcp connection to others peers of the distributed server - id is the key -
 	peers = make(map[int]proto.DistributedServiceClient)
 	// wait for listen to be open
