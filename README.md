@@ -18,6 +18,6 @@ If a peer with an ID greater than that of the server is created, it will become 
 - 'exit' to terminate the peer (if the master fails, one of the other peers will take its place)
 
 **Client commands:**
-- 'bid <amount>' to make a bid
+- 'bid \<amount\>' to make a bid
 - 'result' to see the current state of the auction
 - 'exit' to terminate the client
